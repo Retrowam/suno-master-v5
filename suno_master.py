@@ -1,70 +1,49 @@
 import streamlit as st
 import matchering as mg
-from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain, Reverb, Distortion, LowShelfFilter, HighShelfFilter
+from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain, Reverb, Distortion, LowShelfFilter
 import librosa
 import soundfile as sf
 import numpy as np
-import random
 import os
 
-st.set_page_config(page_title="Suno Stem Master Pro", layout="wide")
-st.title("🎧 Suno Stem Master: Professional Anti-AI & Clear Mix")
+st.set_page_config(page_title="Suno Stem Master: Clear & Human", layout="wide")
+st.title("🎧 Suno Clear Stem Master")
 
-col1, col2, col3 = st.columns(3)
-with col1: v_file = st.file_uploader("Vocal (Ana Səs)", type=["wav", "mp3"])
-with col2: bv_file = st.file_uploader("Back-Vocal (Varsa)", type=["wav", "mp3"])
-with col3: inst_file = st.file_uploader("Instrumental (Musiqi)", type=["wav", "mp3"])
+col1, col2 = st.columns(2)
+with col1: v_file = st.file_uploader("Vocal (Vocalremover-dən)", type=["wav", "mp3"])
+with col2: inst_file = st.file_uploader("Music (Vocalremover-dən)", type=["wav", "mp3"])
 
-def process_vocal(data, sr):
-    # AI 'hamarlığını' pozmaq üçün mikro-pitch shift
-    steps = random.uniform(-0.05, 0.05)
-    v_shifted = librosa.effects.pitch_shift(data, sr=sr, n_steps=steps)
-    
+def process_vocal_clean(data, sr):
+    # Heç bir Pitch Shift (titrəmə) yoxdur!
     board = Pedalboard([
-        LowShelfFilter(cutoff_frequency_hz=300, gain_db=2.5), # İstilik
-        Distortion(drive_db=1.5), # Canlılıq
-        Compressor(threshold_db=-18, ratio=3.5),
-        Reverb(room_size=0.1, wet_level=0.1)
-    ])
-    return board(v_shifted, sr)
-
-def process_instrumental(data, sr):
-    # İnstrumentalı 'nəfəs aldırmaq' və kərpic effektini silmək üçün
-    board = Pedalboard([
-        HighpassFilter(cutoff_frequency_hz=40),
-        HighShelfFilter(cutoff_frequency_hz=8000, gain_db=1.5), # Parlaqlıq
-        Compressor(threshold_db=-12, ratio=2.0), # Yumşaq sıxılma
-        Limiter(threshold_db=-1.0) # Pikləri qorumaq
+        LowShelfFilter(cutoff_frequency_hz=250, gain_db=3.0),
+        Distortion(drive_db=1.8), # 'Warm' effektini verir, amma titrətmir
+        Compressor(threshold_db=-18, ratio=3.0),
+        Reverb(room_size=0.1, dry_level=0.9, wet_level=0.08)
     ])
     return board(data, sr)
 
 if v_file and inst_file:
-    if st.button("Stem Masteri Başlat"):
-        with st.spinner('Fayllar emal olunur...'):
-            # Faylları diskə yazırıq (Xətanın həlli üçün)
-            with open("v_temp.wav", "wb") as f: f.write(v_file.getbuffer())
-            with open("i_temp.wav", "wb") as f: f.write(inst_file.getbuffer())
+    if st.button("Masteri Başlat (Təmiz Variant)"):
+        with st.spinner('Mahnı bərpa olunur...'):
+            with open("v_raw.wav", "wb") as f: f.write(v_file.getbuffer())
+            with open("i_raw.wav", "wb") as f: f.write(inst_file.getbuffer())
             
-            v_audio, sr = librosa.load("v_temp.wav", sr=None, mono=False)
-            i_audio, _ = librosa.load("i_temp.wav", sr=sr, mono=False)
+            v_audio, sr = librosa.load("v_raw.wav", sr=None, mono=False)
+            i_audio, _ = librosa.load("i_raw.wav", sr=sr, mono=False)
             
-            # Vokal və İnstrumental emalı
-            v_final = process_vocal(v_audio, sr)
-            i_final = process_instrumental(i_audio, sr)
+            # Vokalı təmiz və isti şəkildə emal edirik
+            v_final = process_vocal_clean(v_audio, sr)
             
-            # Mix (Birləşdirmə)
-            min_len = min(v_final.shape[1], i_final.shape[1])
-            combined = (v_final[:, :min_len] * 1.1) + (i_final[:, :min_len] * 0.9)
+            # Mix: Vokal artıq daha uca və aydındır
+            min_len = min(v_final.shape[1], i_audio.shape[1])
+            combined = (v_final[:, :min_len] * 1.2) + (i_audio[:, :min_len] * 0.8)
             
             sf.write("pre_master.wav", combined.T, sr)
             
-            # Matchering (Final Cilalama)
             try:
-                # 'reference' üçün diskdəki fayl yolunu veririk
-                mg.process(target="pre_master.wav", reference="i_temp.wav", results=[mg.pcm24("final_master.wav")])
-                st.success("✅ Master Bitdi!")
-                st.audio("final_master.wav")
-            except Exception as e:
-                st.error(f"Xəta: {e}")
-                st.info("Alternativ master təqdim olunur:")
+                mg.process(target="pre_master.wav", reference="i_raw.wav", results=[mg.pcm24("final_clear_master.wav")])
+                st.success("✅ Mahnı artıq 'quyudan çıxdı' və təmizdir!")
+                st.audio("final_clear_master.wav")
+            except:
                 st.audio("pre_master.wav")
