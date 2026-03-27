@@ -1,50 +1,38 @@
 import streamlit as st
 import matchering as mg
-import os
-from pedalboard import Pedalboard, Compressor, HighpassFilter, LowpassFilter, Gain
-from pedalboard.io import AudioFile
+from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain
 import librosa
 import soundfile as sf
 
-st.set_page_config(page_title="Suno Pro v5 Mastering", layout="wide")
+st.set_page_config(page_title="Pro Mastering Studio", layout="centered")
+st.title("🎚️ Professional Auto-Mastering (Non-AI)")
 
-st.title("🚀 Suno Pro v5: AI Cleanup & Mastering Studio")
-st.markdown("---")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    target = st.file_uploader("Suno mahnısını yükləyin (Mütləq)", type=["mp3", "wav"])
-with col2:
-    reference = st.file_uploader("Nümunə/Referans mahnı (İsteğe bağlı)", type=["mp3", "wav"])
+target = st.file_uploader("Suno mahnısını yükləyin", type=["mp3", "wav"])
 
 if target:
-    if st.button("Prosesi Başlat (Professional Mode)"):
-        with st.spinner('AI izləri təmizlənir və referans tətbiq olunur...'):
-            # Faylları müvəqqəti yadda saxlayırıq
-            with open("temp_target.wav", "wb") as f: f.write(target.getbuffer())
+    if st.button("Masterinqi Başlat"):
+        with st.spinner('Riyazi analiz aparılır...'):
+            # 1. Faylı oxuyuruq
+            with open("input.wav", "wb") as f: f.write(target.getbuffer())
+            audio, sr = librosa.load("input.wav", sr=None)
             
-            output_file = "Suno_Pro_Final_Master.wav"
-            
-            # 1. MƏRHƏLƏ: Section D üzrə AI təmizləmə (Pedalboard)
-            input_audio, sr = librosa.load("temp_target.wav", sr=None)
+            # 2. Professional Səs Zənciri (Analog Logic)
+            # Bu zəncir səsi rəngləmir, sadəcə təmizləyir
             board = Pedalboard([
-                HighpassFilter(cutoff_frequency_hz=40),
-                LowpassFilter(cutoff_frequency_hz=16500),
-                Compressor(threshold_db=-18, ratio=4),
-                Gain(gain_db=2)
+                HighpassFilter(cutoff_frequency_hz=30), # Altdakı lazımsız küyü kəsir
+                Compressor(threshold_db=-18, ratio=3, attack_ms=10), # Səsi balanslayır
+                Gain(gain_db=3), # Səsi dolğunlaşdırır
+                Limiter(threshold_db=-1.0) # Səsin partlamasını bloklayır
             ])
-            cleaned_audio = board(input_audio, sr)
-            sf.write("cleaned.wav", cleaned_audio.T, sr)
-
-            # 2. MƏRHƏLƏ: Referans varsa Mastering
-            if reference:
-                with open("temp_ref.wav", "wb") as f: f.write(reference.getbuffer())
-                mg.process(target="cleaned.wav", reference="temp_ref.wav", results=[mg.pcm24(output_file)])
-            else:
-                os.rename("cleaned.wav", output_file)
-
-            st.success("✅ Mahnınız professional səviyyəyə gətirildi!")
-            st.audio(output_file)
-            with open(output_file, "rb") as f:
-                st.download_button("Professional Mahnını Yüklə", f, file_name=output_file)
+            
+            processed = board(audio, sr)
+            sf.write("cleaned_base.wav", processed.T, sr)
+            
+            # 3. Spektral Uyğunlaşdırma (Referanssız Master)
+            # Heç bir mahnı yükləməsən də, sistem daxili "Professional Curve" tətbiq edir
+            mg.process(target="cleaned_base.wav", reference=None, results=[mg.pcm24("mastered_final.wav")])
+            
+            st.success("✅ Riyazi Master tamamlandı! Səs təbii və dolğundur.")
+            st.audio("mastered_final.wav")
+            with open("mastered_final.wav", "rb") as f:
+                st.download_button("Master Faylı Yüklə", f, file_name="Suno_Pro_Master.wav")
