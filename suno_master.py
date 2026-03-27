@@ -1,70 +1,61 @@
 import streamlit as st
 import matchering as mg
-from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain, Reverb, Chorus, Distortion, Phaser
+from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain, Reverb, Chorus, Distortion, LowShelfFilter
 import librosa
 import soundfile as sf
 import numpy as np
 import random
-import os
 
-st.set_page_config(page_title="Suno Anti-AI Stealth", layout="centered")
-st.title("🎧 Suno Anti-AI Stealth Master")
+st.set_page_config(page_title="Suno Stem Master Pro", layout="wide")
+st.title("🎧 Suno Stem Master: Professional Anti-AI")
 
-target_file = st.file_uploader("Mahnını yüklə", type=["mp3", "wav"])
+col1, col2, col3 = st.columns(3)
+with col1: v_file = st.file_uploader("Vocal (Ana Səs)", type=["wav", "mp3"])
+with col2: bv_file = st.file_uploader("Back-Vocal (Varsa)", type=["wav", "mp3"])
+with col3: inst_file = st.file_uploader("Instrumental (Musiqi)", type=["wav", "mp3"])
 
-if target_file:
-    if st.button("AI İzlərini Sil və Master Et"):
-        with st.spinner('AI detektorları üçün tələlər qurulur...'):
-            # Giriş faylını saxlayırıq
-            input_path = "input_raw.wav"
-            with open(input_path, "wb") as f:
-                f.write(target_file.getbuffer())
+def process_vocal(data, sr, is_back=False):
+    # AI-nın o 'ideal' səsini sındırmaq üçün mikro-sürüşmə
+    steps = random.uniform(-0.04, 0.04)
+    v_shifted = librosa.effects.pitch_shift(data, sr=sr, n_steps=steps)
+    
+    # Vokal zənciri: İnsanlaşdırma (Warmth + Saturation)
+    board = Pedalboard([
+        LowShelfFilter(cutoff_frequency_hz=300, gain_db=2.0),
+        Distortion(drive_db=2.0), # Səsə canlılıq qatır
+        Compressor(threshold_db=-15, ratio=3),
+        Chorus(rate_hz=0.5, depth=0.1) if is_back else Gain(gain_db=0)
+    ])
+    return board(v_shifted, sr)
+
+if v_file and inst_file:
+    if st.button("Stem Masteri Başlat"):
+        with st.spinner('Stemlər ayrı-ayrılıqda emal olunur və birləşdirilir...'):
+            # 1. Yükləmə və Oxuma
+            v_audio, sr = librosa.load(v_file, sr=None, mono=False)
+            inst_audio, _ = librosa.load(inst_file, sr=sr, mono=False)
             
-            # Səsi oxuyuruq
-            audio, sr = librosa.load(input_path, sr=None, mono=False)
+            # 2. Vokal Emalı (Anti-AI metodları ilə)
+            v_processed = process_vocal(v_audio, sr)
             
-            # 1. Humanize: Mikro pitch-shift (AI hamarlığını pozmaq üçün)
-            def humanize(data, rate):
-                steps = random.uniform(-0.06, 0.06)
-                return librosa.effects.pitch_shift(data, sr=rate, n_steps=steps)
-
-            if audio.ndim > 1:
-                audio[0] = humanize(audio[0], sr)
-                audio[1] = humanize(audio[1], sr)
+            # 3. Back-vokal emalı (əgər varsa)
+            if bv_file:
+                bv_audio, _ = librosa.load(bv_file, sr=sr, mono=False)
+                bv_processed = process_vocal(bv_audio, sr, is_back=True)
+                # Vokalları birləşdir
+                v_final = v_processed + (bv_processed * 0.7) # Back vokal bir az zəif
             else:
-                audio = humanize(audio, sr)
-                audio = np.vstack((audio, audio))
+                v_final = v_processed
 
-            # 2. Stealth Effects Chain
-            board = Pedalboard([
-                HighpassFilter(cutoff_frequency_hz=48),
-                Phaser(rate_hz=0.15, depth=0.1, feedback=0.1),
-                Distortion(drive_db=2.8),
-                Compressor(threshold_db=-20, ratio=4),
-                Chorus(rate_hz=0.9, depth=0.25),
-                Reverb(room_size=0.1, wet_level=0.15),
-                Gain(gain_db=1.8),
-                Limiter(threshold_db=-0.2)
-            ])
+            # 4. Mix (Vokal + Musiqi)
+            # Musiqi və vokalın uzunluqlarını bərabərləşdir
+            min_len = min(v_final.shape[1], inst_audio.shape[1])
+            combined = v_final[:, :min_len] + inst_audio[:, :min_len]
             
-            processed = board(audio, sr)
-            
-            # Matchering üçün iki fərqli fayl yaradırıq (Xətanın qarşısını almaq üçün)
-            target_path = "stealth_target.wav"
-            ref_path = "input_raw.wav" # Orijinalı referans kimi istifadə edirik
-            sf.write(target_path, processed.T, sr)
+            sf.write("pre_master.wav", combined.T, sr)
 
-            final_output = "final_stealth_master.wav"
+            # 5. Final Professional Mastering (Matchering)
+            mg.process(target="pre_master.wav", reference=inst_file, results=[mg.pcm24("final_stem_master.wav")])
             
-            try:
-                # Target və Reference fərqli olduğu üçün artıq xəta verməyəcək
-                mg.process(target=target_path, reference=ref_path, results=[mg.pcm24(final_output)])
-                
-                st.success("✅ Stealth Master hazır! AI izləri qarışdırıldı.")
-                st.audio(final_output)
-                with open(final_output, "rb") as f:
-                    st.download_button("Master Mahnını Yüklə", f, file_name="Final_Stealth_Master.wav")
-            except Exception as e:
-                st.error(f"Masterinq xətası: {e}")
-                st.info("Alternativ olaraq stealth variantı təqdim edilir:")
-                st.audio(target_path)
+            st.success("✅ Stem Master Bitdi! Bu mahnı artıq 'Hybrid' (İnsan+Studiya) statusundadır.")
+            st.audio("final_stem_master.wav")
