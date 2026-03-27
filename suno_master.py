@@ -1,46 +1,55 @@
 import streamlit as st
 import matchering as mg
-from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain, Reverb, Chorus, Distortion, LowShelfFilter
+from pedalboard import Pedalboard, Compressor, HighpassFilter, Limiter, Gain, Reverb, Chorus, Distortion, Phaser
 import librosa
 import soundfile as sf
 import numpy as np
+import random
 
-st.set_page_config(page_title="Suno Master Pro: Ultimate", layout="centered")
-st.title("🎧 Suno Pro: Stereo & Warm Master")
+def humanize_audio(audio, sr):
+    # 1. Mikro-Pitch Shift (Səsi 'insanlaşdırmaq' üçün yüngül dalğalanma)
+    # Bu, AI-nın o 'ideal' səsini pozur
+    n_steps = random.uniform(-0.05, 0.05)
+    audio_shifted = librosa.effects.pitch_shift(audio, sr=sr, n_steps=n_steps)
+    return audio_shifted
 
-target_file = st.file_uploader("Suno mahnısını yükləyin", type=["mp3", "wav"])
+st.title("🎧 Suno Anti-AI Stealth Master")
+
+target_file = st.file_uploader("Mahnını yüklə", type=["mp3", "wav"])
 
 if target_file:
-    if st.button("Masteri Başlat"):
-        with st.spinner('Səs təmizlənir və insanlaşdırılır...'):
+    if st.button("AI İzlərini Sil və Master Et"):
+        with st.spinner('Analizatorlar üçün tələlər qurulur...'):
             with open("input.wav", "wb") as f:
                 f.write(target_file.getbuffer())
             
             audio, sr = librosa.load("input.wav", sr=None, mono=False)
-            if audio.ndim == 1: audio = np.vstack((audio, audio))
             
-            # Professional "Humanizer" Zənciri
+            # Səsi insanlaşdırma funksiyasından keçiririk
+            if audio.ndim > 1:
+                audio[0] = humanize_audio(audio[0], sr)
+                audio[1] = humanize_audio(audio[1], sr)
+            else:
+                audio = humanize_audio(audio, sr)
+                audio = np.vstack((audio, audio))
+
+            # Aqressiv Gizlətmə Zənciri
             board = Pedalboard([
-                HighpassFilter(cutoff_frequency_hz=45),
-                # 1. BandLab-dakı 'Warm' effekti (Basları yumşaldır, səsə istilik qatır)
-                LowShelfFilter(cutoff_frequency_hz=300, gain_db=3.0),
-                # 2. 'Saturation' effekti (AI hamarlığını pozub insan nəfəsi qatır)
-                Distortion(drive_db=2.5), 
-                Compressor(threshold_db=-18, ratio=3.5),
-                Chorus(rate_hz=1.0, depth=0.2, centre_delay_ms=7),
-                Reverb(room_size=0.1, dry_level=0.8, wet_level=0.15, width=1.0),
-                Gain(gain_db=1.5),
-                Limiter(threshold_db=-0.1)
+                HighpassFilter(cutoff_frequency_hz=50),
+                # Phaser çox yüngül dalğalanma yaradır ki, AI izi itir
+                Phaser(rate_hz=0.1, depth=0.1, centre_frequency_hz=1000, feedback=0.1),
+                Distortion(drive_db=3.0), # 'Warmth' üçün saturation
+                Compressor(threshold_db=-20, ratio=4),
+                Chorus(rate_hz=0.8, depth=0.3),
+                Reverb(room_size=0.12, wet_level=0.18),
+                Gain(gain_db=2.0),
+                Limiter(threshold_db=-0.2)
             ])
             
             processed = board(audio, sr)
-            sf.write("warm_stereo.wav", processed.T, sr)
+            sf.write("stealth_base.wav", processed.T, sr)
 
-            try:
-                mg.process(target="warm_stereo.wav", reference="warm_stereo.wav", results=[mg.pcm24("final_master.wav")])
-                output = "final_master.wav"
-            except:
-                output = "warm_stereo.wav"
+            mg.process(target="stealth_base.wav", reference="stealth_base.wav", results=[mg.pcm24("final_stealth.wav")])
             
-            st.success("✅ Mahnı həm təmizləndi, həm də 'Warm' (İnsan) effekti əlavə olundu!")
-            st.audio(output)
+            st.success("✅ AI izləri texniki olaraq qarışdırıldı!")
+            st.audio("final_stealth.wav")
